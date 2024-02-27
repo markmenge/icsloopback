@@ -9,6 +9,7 @@ void GetMessagesFromDevice(BOOL bQuiet = FALSE);
 void SendMessageFromDevice(BOOL bQuiet = FALSE, BOOL bFd = TRUE);
 void GetErrorsFromDevice(void);
 void SetHSCANBaudRatetoDevice(int iRateToUse);
+void SetAllCANFDBaudRates(int iBitRateToUse);
 
 
 #endif 

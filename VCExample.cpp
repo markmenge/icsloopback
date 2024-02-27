@@ -651,11 +651,15 @@ void LoopbacktestProduction()
 		ConnectToDevice(0);
 		if (m_bPortOpen==false)
 		{
-			printf("neoVI not opened\r\n");
+			printf("Device not opened\r\n");
 			return;
 		}
 	}
+
 	SetAllCANBaudRates(500000);
+	if (g_bSupportsFd)
+		SetAllCANFDBaudRates(2000000);
+	
 	while (!_kbhit())
 	{
 		LoopbacktestTxRx(&NumMessages, &NumLost, &NumErrors, false);
@@ -681,6 +685,8 @@ void LoopbacktestProduction()
 			return;
 		}
 	}
+	if (NumErrors == 0)
+		printf("\nProduct test: ABORT (keyboard hit)\n");
 }
 
 //----------------------------------------------------------------------------
@@ -750,13 +756,14 @@ void SetHSCANBaudRatetoDevice(int iRateToUse)
 	}
 
 }
+
 void SetAllCANBaudRates(int iBitRateToUse)
 {
 	int i, iResult = 0;
 	//Make sure the device is open
 	if (m_bPortOpen==false)
 	{
-		printf("neoVI not opened\r\n");
+		printf("Device not opened\r\n");
 		return;   
 	}
 	for (i = 0; i < g_iNumCanNetworks; i++)
@@ -778,7 +785,43 @@ void SetAllCANBaudRates(int iBitRateToUse)
 	}
 }
 
-//----------------------------------------------------------------------------
+void SetAllCANFDBaudRates(int iBitRateToUse)
+{
+	int i, iResult = 0;
+
+	//printf("Unable to set FD baud rates, make sure they are set to the same baud rate same in neoVI3GExplorer.\n");
+	//return;
+
+	//Make sure the device is open
+	if (m_bPortOpen == false)
+	{
+		printf("Device not opened\r\n");
+		return;
+	}
+	for (i = 0; i < g_iNumCanNetworks; i++)
+	{
+		icsneoEnableNetworkComEx(m_hObject, NetWorkIds[i], false); // Neo FIREs will hang if you don't disable the network before setting the bit rate
+		Sleep(100);
+
+		//Set the bit rate
+		iResult = icsneoSetFDBitRate(m_hObject, iBitRateToUse, NetWorkIds[i]);
+
+		icsneoEnableNetworkComEx(m_hObject, NetWorkIds[i], true); // Neo FIREs will hang if you don't disable the network first
+		Sleep(100);
+		if (iResult == 0)
+		{
+			unsigned long errorcode = 0;
+			icsneoGetLastAPIError(m_hObject, &errorcode);
+			printf("Problem setting FD bit rate for network ID:%d (errorcode:%u)\r\n", NetWorkIds[i], errorcode);
+		}
+		else
+		{
+			//  printf("Baudrate Set\r\n");
+		}
+	}
+}
+
+
 //----------------------------------------------------------------------------
 
 void DisconnectFromDevice(void)
@@ -968,7 +1011,7 @@ void ListDevices(void)
 			sTempString = "Unknown neoVI SN ";
 		}
 		char SerialNumber[80];
-		SerialNumber[0] = 0;
+		//SerialNumber[0] = 0;
 		if (icsneoSerialNumberToString)
 			icsneoSerialNumberToString(ndNeoToOpen[iCounter].neoDevice.SerialNumber, SerialNumber, sizeof(SerialNumber));
 		printf("%s %s DeviceType:0x%X\r\n",sTempString.c_str(), SerialNumber, ndNeoToOpen[iCounter].neoDevice.DeviceType);
