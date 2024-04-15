@@ -11,14 +11,50 @@
 
 4. Press `F5` to build and run the application.
 
+### Guide for installating a new version of VSpy3 or APIKit
+
+Currently recommended firmware is 3.9.13.20. Note that settings are in a binary format, so they can be incorrect after a firmware update.
+
+1. Run neoVI3GExplorer.exe
+
+2. Connect and Manually Reflash if firmware is out-of-date.
+
+3. Load Default Settings. 
+
+4. Write Settings.
+
+5. Disconnect
+
 ### Production Test Guidelines
 
-1. Install the loopback adapter ensuring the following connections:
-   - CAN1 connected to CAN2
-   - CAN3 connected to CAN4
-   - Continue as needed for additional CAN interfaces.
+1. Connect loopback adapter (see below)
 
-2. Press `P` to initiate the Production Test.
+2. Download and run loopback.exe (available here: https://github.com/markmenge/icsloopback/blob/main/Release/LoopbackTest.exe)
 
-3. Allow the test to run for approximately 4 hours. After completion, observe the Pass/Fail indication to determine the outcome.
+3. Press `P` to initiate the Production Test.
+
+4. Allow the test to run for approximately 4 hours. After completion, observe the Pass/Fail indication to determine the outcome.
+
+5. If successful: attach sticker: <Firmware Version> <Initials> PASS
    
+Example:
+
+3.9.13.20 MM Pass
+
+### Loopback adapter
+Build the loopback adapter to have buses connected to each other in pairs:
+
+| Device       | Connections   |
+|--------------|---------------|
+| **RED2**     | CAN1 - CAN2   |
+|              | CAN3 - CAN4   |
+|              | CAN5 - CAN6   |
+|              | CAN7 - CAN8   |
+| **Fire2**    | CAN1 - MS     |
+|              | CAN2 - CAN3   |
+|              | CAN4 - CAN5   |
+|              | CAN6 - CAN7   |
+| **ValueCAN4**| CAN1 - CAN2   |
+
+**Note:** A loopback plug has VERY short CAN bus lengths and breaks the normal rule of 2 120 Ohm terminators per bus.
+
