@@ -57,4 +57,5 @@ Build the loopback adapter to have buses connected to each other in pairs:
 | **ValueCAN4**| CAN1 - CAN2   |
 
 **Note:** A loopback plug has VERY short CAN bus lengths and breaks the normal rule of 2 120 Ohm terminators per bus.
+I made my loopback adapter for a RED2/Fire2 by buying a DB26 Female Solderless Breakout Connector from Amazon.
 
