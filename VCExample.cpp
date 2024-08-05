@@ -839,6 +839,8 @@ void DisconnectFromDevice(void)
 	{
 		printf("Port Closed\r\n");
 	}
+	icsneoFreeObject(m_hObject);
+	m_hObject = NULL;
 	//clear open flag
 	m_bPortOpen = false;
 }
