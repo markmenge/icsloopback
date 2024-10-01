@@ -29,8 +29,7 @@ Next the tester verifies that all the messages have been properly received
 #include <conio.h>
 using namespace std;
 
-// 04/22/2016 - menge add loopback tests and ProductionLoopbackTest
-//                    
+#define PRODUCTION_TEST_TIME_SEC (4 * 3600) // 4 hours
 #define SLEEP_MS 1
 #define TIMEOUT_MS 1000
 #define MAX_NUM_NETWORKS 8
@@ -39,21 +38,15 @@ using namespace std;
 int NetWorkIds[MAX_NUM_NETWORKS]               = {NETID_HSCAN, NETID_MSCAN, NETID_HSCAN2, NETID_HSCAN3, NETID_HSCAN4, NETID_HSCAN5, NETID_HSCAN6, NETID_HSCAN7};
 int NetWorkIdLoopbackPartner[MAX_NUM_NETWORKS] = {NETID_MSCAN, NETID_HSCAN, NETID_HSCAN3, NETID_HSCAN2, NETID_HSCAN5, NETID_HSCAN4, NETID_HSCAN7, NETID_HSCAN6};
 
-//int NetWorkIds[MAX_NUM_NETWORKS]               = {NETID_HSCAN, NETID_HSCAN2, NETID_HSCAN2, NETID_HSCAN3, NETID_HSCAN4, NETID_HSCAN5, NETID_HSCAN6, NETID_HSCAN7};
-//int NetWorkIdLoopbackPartner[MAX_NUM_NETWORKS] = {NETID_HSCAN2, NETID_HSCAN, NETID_HSCAN3, NETID_HSCAN2, NETID_HSCAN5, NETID_HSCAN4, NETID_HSCAN7, NETID_HSCAN6};
-
-
 void *m_hObject; //handle for device
 bool m_bPortOpen; //tells the port status of the device
 int g_iNumCanNetworks; // number of actual CAN networks
-int g_bSupportsFd; // CAN busses support FD
+int g_bSupportsFd; // CAN buses support FD
 
 HINSTANCE hDLL;
-void Loopbacktest(BOOL bUseFd);
-void LoopbacktestProduction();   // suggested loopbacktest for production
 int LoopbackNetworkID(int NetworkId);  // For any given network ID, return other network ID of the loopback pair
 void SetAllCANBaudRates(int iBitRateToUse);
-void ConnectDisconnectTest(int device);
+void ConnectDisconnectStressTest(int device);
 void LoopbackLIN();
 
 //----------------------------------------------------------------------------
@@ -78,6 +71,21 @@ int _tmain(int argc, _TCHAR* argv[])
 	iVerNumber=icsneoGetDLLVersion();
 	printf("ICS icsneo40.dll version %d\r\n\r\n", iVerNumber);
 
+	// Command line: <serial number> <test time>
+	if (argc > 2)
+	{
+		bool bError = true;
+		printf("Executing %s\n", __argv[0]);
+		if (ConnectBySerialNumber(argv[1]))
+		{
+			m_bPortOpen = true;
+			bError = LoopbacktestProduction(atoi(argv[2]));
+			DisconnectFromDevice();
+		}
+		return bError;
+	}
+
+
 	while (bKeepRunning)
 	{
 		//Make Main Menu
@@ -100,8 +108,8 @@ int _tmain(int argc, _TCHAR* argv[])
 		printf("L - Loopback test with CAN FD (press any key to stop)\n");
 		printf("M - Loopback test with normal CAN (press any key to stop)\n");
 		printf("P - Loopback production test (4 hour PASS/FAIL) (press any key to stop)\n");
-		printf("Q - Connect/disconnect on first device\n");
-		printf("R - Connect/disconnect on second device\n");
+		printf("Q - Connect/Tx/disconnect stress test on first device\n");
+		printf("R - Connect/Tx/disconnect stress test on second device\n");
 		printf("X - Exit\n");
 		printf("\r\n\r\n");
 		//Get User intput
@@ -156,13 +164,13 @@ int _tmain(int argc, _TCHAR* argv[])
 			Loopbacktest(FALSE);
 			break;
 		case 'P':  //P - Loopbacktest
-			LoopbacktestProduction();
+			LoopbacktestProduction(PRODUCTION_TEST_TIME_SEC);
 			break;
 		case 'Q':  //
-			ConnectDisconnectTest(0);
+			ConnectDisconnectStressTest(0);
 			break;
 		case 'R':  //
-			ConnectDisconnectTest(1);
+			ConnectDisconnectStressTest(1);
 			break;
 
 		case 'X': //X - Exit
@@ -445,6 +453,18 @@ void LoopbacktestTxRx(int *pNumMessages, int *pNumLost, int *pNumErrors, BOOL bU
 		return;  
 	}
 
+	int iNumberOfErrors;
+	int lNumberOfMessages;
+	*pNumMessages = 0;
+	*pNumErrors = 0;
+	*pNumLost = 0;
+	int RxOk = 0;
+	int timems = 0;
+
+	// Do a flush of any messages to start with a clean slate
+	lNumberOfMessages = 10000;
+	lResult = icsneoGetMessages(m_hObject, stMessages, &lNumberOfMessages, &iNumberOfErrors); //Call get message function
+
 	// The number of Data Bytes
 	if (bUseFd)
 	{
@@ -473,22 +493,15 @@ void LoopbacktestTxRx(int *pNumMessages, int *pNumLost, int *pNumErrors, BOOL bU
 		//Set the ID.  0x100 + Network ID 
 		stMessagesTx.ArbIDOrHeader = 0x100 + NetWorkIds[i];
 		stMessagesTx.NetworkID = NetWorkIds[i];
-		if (bUseFd)
-			lResult = icsneoTxMessagesEx(m_hObject, &stMessagesTx, NetWorkIds[i], 1, &iNumberSent, 0);
-		else
-			lResult = icsneoTxMessages(m_hObject, &stMessagesTx, NetWorkIds[i], 1);
+		//for (j = 0; j < 20; j++)
+		{
+			if (bUseFd)
+				lResult = icsneoTxMessagesEx(m_hObject, &stMessagesTx, NetWorkIds[i], 1, &iNumberSent, 0);
+			else
+				lResult = icsneoTxMessages(m_hObject, &stMessagesTx, NetWorkIds[i], 1);
+		}
 	}
-	int iNumberOfErrors;
-	int lNumberOfMessages;
-	*pNumMessages = 0;
-	*pNumErrors = 0;
-	*pNumLost = 0;
-	int RxOk = 0;
-	int timems = 0;
 
-	// Do a flush of any messages to start with a clean slate
-	lNumberOfMessages = 10000;
-	lResult = icsneoGetMessages(m_hObject, stMessages, &lNumberOfMessages, &iNumberOfErrors); //Call get message function
 	while (1)
 	{
 
@@ -608,16 +621,16 @@ void LoopbacktestTxRx(int *pNumMessages, int *pNumLost, int *pNumErrors, BOOL bU
 	} // while(1)
 }
 
-
-void Loopbacktest(BOOL bUseFd)
+bool Loopbacktest(BOOL bUseFd, uint64_t MaxTimeInSecs)
 {
 	int NumMessages = 0, NumLost = 0, NumErrors = 0;
 	int TotalNumMessages = 0, TotalNumLost = 0, TotalNumErrors = 0;
+
 	//make sure the device is open
 	if (m_bPortOpen==false)
 	{
 		printf("neoVI not opened\r\n");
-		return;  
+		return true;  
 	}
 
 	if (bUseFd)
@@ -626,7 +639,11 @@ void Loopbacktest(BOOL bUseFd)
 		printf("Loopback test for normal CAN\n");
 
 	SetAllCANBaudRates(500000);
-	while (!_kbhit())
+
+	uint64_t StartTimeMs = GetTickCount64();
+
+	while (!_kbhit() &&
+		(GetTickCount64() - StartTimeMs)/1000 < MaxTimeInSecs)
 	{
 		LoopbacktestTxRx(&NumMessages, &NumLost, &NumErrors, bUseFd);
 		TotalNumMessages += NumMessages;
@@ -634,16 +651,19 @@ void Loopbacktest(BOOL bUseFd)
 		TotalNumErrors += NumErrors;
 		printf("\rMessages:%d lost:%d errors:%d  ", TotalNumMessages, TotalNumLost, TotalNumErrors);
 	}
+	if (TotalNumLost == 0 && TotalNumErrors == 0)
+		return false;
+	else
+		return true;
 }
-#define PRODUCTION_TEST_TIME_SEC (4 * 3600) // 4 hours
-//#define PRODUCTION_TEST_TIME_SEC (10) // 4 hours
 
-void LoopbacktestProduction()
+// Returns:
+// true for error found
+// false for no errors
+bool LoopbacktestProduction(uint64_t MaxTimeInSecs)
 {
 	int NumMessages = 0, NumLost = 0, NumErrors = 0;
 	int TotalNumMessages = 0, TotalNumLost = 0, TotalNumErrors = 0;
-
-	UINT32 StartTimeMs = GetTickCount();
 
 	//make sure the device is open
 	if (m_bPortOpen==false)
@@ -652,14 +672,16 @@ void LoopbacktestProduction()
 		if (m_bPortOpen==false)
 		{
 			printf("Device not opened\r\n");
-			return;
+			return false;
 		}
 	}
 
 	SetAllCANBaudRates(500000);
 	if (g_bSupportsFd)
 		SetAllCANFDBaudRates(2000000);
-	
+
+	uint64_t StartTimeMs = GetTickCount64();
+
 	while (!_kbhit())
 	{
 		LoopbacktestTxRx(&NumMessages, &NumLost, &NumErrors, false);
@@ -676,17 +698,18 @@ void LoopbacktestProduction()
 			TotalNumErrors += NumErrors;
 			printf("\rMessages:%d lost:%d errors:%d  ", TotalNumMessages, TotalNumLost, TotalNumErrors);
 		}
-		if (PRODUCTION_TEST_TIME_SEC < labs(StartTimeMs - GetTickCount())/1000L)
+		if ((GetTickCount64() - StartTimeMs) / 1000 > MaxTimeInSecs)
 		{
 			if (NumErrors == 0)
-				printf("\nProduct test: PASS\n");
+				printf("\nProduction test: PASS\n");
 			else
-				printf("\nProduct test: FAIL\n");
-			return;
+				printf("\nProduction test: FAIL\n");
+			return NumErrors != 0; // true == an error found
 		}
 	}
 	if (NumErrors == 0)
-		printf("\nProduct test: ABORT (keyboard hit)\n");
+		printf("\nProduction test: ABORT (keyboard hit)\n");
+	return false;
 }
 
 //----------------------------------------------------------------------------
@@ -879,7 +902,6 @@ void ConnectToDevice(int device /* starts at 0 */)
 		return;
 	}
 	m_hObject = NULL;
-	m_hObject = 0;
 	//Connect to the first device found
 	iResult = icsneoOpenNeoDevice(&ndNeoToOpen[device].neoDevice, &m_hObject, NULL,1,0);
 	if(iResult==false)
@@ -952,6 +974,110 @@ void ConnectToDevice(int device /* starts at 0 */)
 
 	m_bPortOpen = true;
 }
+
+// ConnectBySerialNumber(const char *SerialNumber)
+// returns true for successful connect
+bool ConnectBySerialNumber(const char *SerialNumber)
+{
+	int iResult;
+	NeoDeviceEx ndNeoToOpen[10];
+	int iNumberOfDevices;
+	string sTempString;
+	int i;
+
+	iNumberOfDevices = 10;
+	//Search for attached devices
+	iResult = icsneoFindDevices(ndNeoToOpen, &iNumberOfDevices, NULL, NULL, NULL, NULL);
+	if (iResult == false)
+	{
+		printf("Problem Finding Device\n");
+		return false;
+	}
+
+	if (iNumberOfDevices < 1)
+	{
+		printf("No Devices Found\n");
+		return false;
+	}
+
+	for (i = 0; i < iNumberOfDevices; i++)
+	{
+		char buf[80];
+		icsneoSerialNumberToString(ndNeoToOpen[i].neoDevice.SerialNumber, buf, sizeof(buf));
+		if (_stricmp(buf, SerialNumber) == 0)
+		{
+			printf("%s found!\n", SerialNumber);
+			iResult = icsneoOpenNeoDevice(&ndNeoToOpen[i].neoDevice, &m_hObject, NULL, 1, 0);
+			if (iResult == false)
+			{
+				printf("icsneoOpenNeoDevice returns false\n");
+				return false;
+			}	
+			printf("%s %s DeviceType:0x%X opened\n", buf, SerialNumber, ndNeoToOpen[i].neoDevice.DeviceType);
+			g_bSupportsFd = false;
+
+			//Display the type of device
+			switch (ndNeoToOpen[i].neoDevice.DeviceType)
+			{
+			case 1:
+				sTempString = "neoVI Blue SN ";
+				break;
+			case 4:
+				sTempString = "ValueCAN 2 SN ";
+				break;
+			case NEODEVICE_FIRE:
+				sTempString = "neoVI FIRE SN ";
+				g_iNumCanNetworks = 4;
+				break;
+			case NEODEVICE_VCAN3:
+				sTempString = "ValueCAN 3 SN ";
+				g_iNumCanNetworks = 2;
+				break;
+			case NEODEVICE_VCAN42:
+				sTempString = "ValueCAN 4-2 SN ";
+				g_iNumCanNetworks = 2;
+				break;
+			case NEODEVICE_VCAN41:
+				sTempString = "ValueCAN 4-1 SN ";
+				g_iNumCanNetworks = 1;
+				break;
+			case NEODEVICE_RED2:
+				sTempString = "NEODEVICE_FIRE2";
+				g_iNumCanNetworks = 8;
+				g_bSupportsFd = true;
+				break;
+			case NEODEVICE_RADGALAXY:
+				sTempString = "RAD GALAXY";
+				g_iNumCanNetworks = 8;
+				g_bSupportsFd = true;
+				break;
+			case NEODEVICE_VCAN4_IND:
+				sTempString = "ValueCAN4 Industrial";
+				g_iNumCanNetworks = 2;
+				g_bSupportsFd = true;
+				break;
+			default:
+				sTempString = "Unknown neoVI SN ";
+				break;
+			}
+			if (ndNeoToOpen[i].neoDevice.DeviceType == NEODEVICE_VCAN42 || ndNeoToOpen[i].neoDevice.DeviceType == NEODEVICE_VCAN4_IND)
+			{
+				NetWorkIds[1] = NETID_HSCAN2;
+				NetWorkIdLoopbackPartner[0] = NETID_HSCAN2;
+			}
+			else
+			{
+				NetWorkIds[1] = NETID_MSCAN;
+				NetWorkIdLoopbackPartner[0] = NETID_MSCAN;
+
+			}
+		}
+	}
+	printf("%s %s opened\n", SerialNumber, sTempString.c_str());
+	return true;
+}
+
+
 //----------------------------------------------------------------------------
 void ListDevices(void)
 {
@@ -1038,21 +1164,39 @@ int LoopbackNetworkID(int NetworkId)
 	return 0;
 }
 
-void ConnectDisconnectTest(int device)
+
+
+void ConnectDisconnectStressTest(int device)
 {
-	int i;
+	int i, count = 0, errors = 0;
+
+	printf("Blast messages on HS1 (y/n)?");
+	int blast = _getch();
 
 	while (!_kbhit())
 	{
+		count++;
+		printf("Test: %d Errors: %d\n", count, errors);
 		ConnectToDevice(device);
 		if (m_bPortOpen == FALSE)
 		{
-			MessageBox(GetConsoleWindow(), "Failed to connect", "LoopbackTest.exe", MB_ICONHAND);
+			errors++;
+			//MessageBox(GetConsoleWindow(), "Failed to connect", "LoopbackTest.exe", MB_ICONHAND);
 			continue;
 		}
+//		SetAllCANBaudRates(250000);
+		SetAllCANBaudRates(500000);
+
 		GetMessagesFromDevice(TRUE);
-		for (i = 0; i < 1000; i++)
-			SendMessageFromDevice(true);
+		if (blast == 'y')
+		{
+			for (i = 0; i < 100000; i++)
+			{
+				SendMessageFromDevice(true);
+				if (0 == (i % 1000))
+					Sleep(100);
+			}
+		}
 		GetMessagesFromDevice(TRUE);
 		DisconnectFromDevice();
 		if (m_bPortOpen == TRUE)
